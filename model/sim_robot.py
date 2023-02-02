@@ -217,25 +217,24 @@ class SimRobot(mujoco_env.MujocoEnv, utils.EzPickle):
         return np.array([[x, y, z]], dtype=object).T
     
     def q_interpolation(self, joint_val_seq, desired_time=10, freq = 500): # UR5e Hz: 500
-            joint_seq_arr    = np.array(joint_val_seq, dtype=object)
-            joint_seq        = joint_seq_arr.T
-            new_q_list = []
-            for idx in range(len(joint_seq)):
-                for i in range(len(joint_seq[idx])):
-                    if i ==(len(joint_seq[idx])-1):
-                        break 
-                    if i == 0:
-                        pre_q, after_q = joint_seq[idx][i:i+2]
-                        new_first_q    = np.linspace(pre_q, after_q, int(freq*(desired_time)))
-                        new_q_arr      = new_first_q 
-                    else:
-                        pre_q, after_q = joint_seq[idx][i:i+2]
-                        new_q          = np.linspace(pre_q, after_q, int(freq*(desired_time)))
-                        new_q_arr      = np.append(new_q_arr, new_q)
-                new_q_list.append(new_q_arr)
-            np_q = np.array(new_q_list, dtype=object)
-            np_q_trans =np_q.T 
-            return np_q_trans
+        joint_seq_arr    = np.array(joint_val_seq, dtype=object)
+        joint_seq        = joint_seq_arr.T
+        new_q_list = []
+        for idx in range(len(joint_seq)):
+            for i in range(len(joint_seq[idx])):
+                if i ==(len(joint_seq[idx])-1): break 
+                if i == 0:
+                    pre_q, after_q = joint_seq[idx][i:i+2]
+                    interp_init_q    = np.linspace(pre_q, after_q, int(freq*(desired_time)))
+                    interp_q_arr      = interp_init_q 
+                else:
+                    pre_q, after_q = joint_seq[idx][i:i+2]
+                    interp_q       = np.linspace(pre_q, after_q, int(freq*(desired_time)))
+                    interp_q_arr   = np.append(interp_q_arr, interp_q)
+            new_q_list.append(interp_q_arr)
+        np_q = np.array(new_q_list, dtype=object)
+        np_q_trans =np_q.T 
+        return np_q_trans
     
     def simple_move(self, desired_position=np.array([0.9, 0, 1.0], dtype=object), 
                           desired_rotation=np.array([-math.pi/2, 0, -math.pi/2], dtype=object),
