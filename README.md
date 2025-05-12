@@ -12,7 +12,6 @@ Before using this package, ensure the following software and dependencies are pr
 - ROS 2 Humble Hawksbill or later
 - Python 3.8+
 - Mujoco 2.3.3 (or compatible version)
-- NVIDIA GPU (optional, for faster simulation)
 
 ---
 
