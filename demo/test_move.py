@@ -1,153 +1,90 @@
-#!/usr/bin/env python
 import time
-import roslib; roslib.load_manifest('ur_driver')
-import rospy
-import actionlib
-from control_msgs.msg import *
-from trajectory_msgs.msg import *
+import math
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from control_msgs.action import FollowJointTrajectory
+from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState
-from math import pi
 
-JOINT_NAMES = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
-               'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
-Q1 = [0,0,-1.57,0,0,0]
-Q2 = [0,0,-1.57,0,0,0]
-Q3 = [0,-0.2,-1.57,0,0,0]
-    
-client = None
+JOINT_NAMES = [
+    'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+    'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint'
+]
 
-def move1():
-    global joints_pos
-    g = FollowJointTrajectoryGoal()
-    g.trajectory = JointTrajectory()
-    g.trajectory.joint_names = JOINT_NAMES
-    try:
-        joint_states = rospy.wait_for_message("joint_states", JointState)
-        joints_pos = joint_states.position
-        g.trajectory.points = [
-            JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-            JointTrajectoryPoint(positions=Q1, velocities=[0]*6, time_from_start=rospy.Duration(2.0)),
-            JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(3.0)),
-            JointTrajectoryPoint(positions=Q3, velocities=[0]*6, time_from_start=rospy.Duration(4.0))]
-        client.send_goal(g)
-        client.wait_for_result()
-    except KeyboardInterrupt:
-        client.cancel_goal()
-        raise
-    except:
-        raise
+Q1 = [0, 0, -1.57, 0, 0, 0]
+Q2 = [0, 0, -1.57, 0, 0, 0]
+Q3 = [0, -0.2, -1.57, 0, 0, 0]
 
-def move_disordered():
-    order = [4, 2, 3, 1, 5, 0]
-    g = FollowJointTrajectoryGoal()
-    g.trajectory = JointTrajectory()
-    g.trajectory.joint_names = [JOINT_NAMES[i] for i in order]
-    q1 = [Q1[i] for i in order]
-    q2 = [Q2[i] for i in order]
-    q3 = [Q3[i] for i in order]
-    try:
-        joint_states = rospy.wait_for_message("joint_states", JointState)
-        joints_pos = joint_states.position
-        g.trajectory.points = [
-            JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-            JointTrajectoryPoint(positions=q1, velocities=[0]*6, time_from_start=rospy.Duration(2.0)),
-            JointTrajectoryPoint(positions=q2, velocities=[0]*6, time_from_start=rospy.Duration(3.0)),
-            JointTrajectoryPoint(positions=q3, velocities=[0]*6, time_from_start=rospy.Duration(4.0))]
-        client.send_goal(g)
-        client.wait_for_result()
-    except KeyboardInterrupt:
-        client.cancel_goal()
-        raise
-    except:
-        raise
-    
-def move_repeated():
-    g = FollowJointTrajectoryGoal()
-    g.trajectory = JointTrajectory()
-    g.trajectory.joint_names = JOINT_NAMES
-    try:
-        joint_states = rospy.wait_for_message("joint_states", JointState)
-        joints_pos = joint_states.position
-        d = 2.0
-        g.trajectory.points = [JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0))]
-        for i in range(10):
-            g.trajectory.points.append(
-                JointTrajectoryPoint(positions=Q1, velocities=[0]*6, time_from_start=rospy.Duration(d)))
-            d += 1
-            g.trajectory.points.append(
-                JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(d)))
-            d += 1
-            g.trajectory.points.append(
-                JointTrajectoryPoint(positions=Q3, velocities=[0]*6, time_from_start=rospy.Duration(d)))
-            d += 2
-        client.send_goal(g)
-        client.wait_for_result()
-    except KeyboardInterrupt:
-        client.cancel_goal()
-        raise
-    except:
-        raise
+class UR5eCommander(Node):
+    def __init__(self):
+        super().__init__('ur5e_commander')
+        self.client = ActionClient(self, FollowJointTrajectory, '/follow_joint_trajectory')
+        self.joint_state_sub = self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
+        self.current_joint_positions = None
 
-def move_interrupt():
-    g = FollowJointTrajectoryGoal()
-    g.trajectory = JointTrajectory()
-    g.trajectory.joint_names = JOINT_NAMES
-    try:
-        joint_states = rospy.wait_for_message("joint_states", JointState)
-        joints_pos = joint_states.position
-        g.trajectory.points = [
-            JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-            JointTrajectoryPoint(positions=Q1, velocities=[0]*6, time_from_start=rospy.Duration(2.0)),
-            JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(3.0)),
-            JointTrajectoryPoint(positions=Q3, velocities=[0]*6, time_from_start=rospy.Duration(4.0))]
-    
-        client.send_goal(g)
-        time.sleep(3.0)
-        print("Interrupting")
-        joint_states = rospy.wait_for_message("joint_states", JointState)
-        joints_pos = joint_states.position
-        g.trajectory.points = [
-            JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-            JointTrajectoryPoint(positions=Q1, velocities=[0]*6, time_from_start=rospy.Duration(2.0)),
-            JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(3.0)),
-            JointTrajectoryPoint(positions=Q3, velocities=[0]*6, time_from_start=rospy.Duration(4.0))]
-        client.send_goal(g)
-        client.wait_for_result()
-    except KeyboardInterrupt:
-        client.cancel_goal()
-        raise
-    except:
-        raise
-   
+    def joint_state_callback(self, msg):
+        self.current_joint_positions = msg.position
+
+    def wait_for_joint_state(self):
+        while rclpy.ok() and self.current_joint_positions is None:
+            self.get_logger().info('Waiting for joint_states...')
+            rclpy.spin_once(self)
+        return self.current_joint_positions
+
+    def build_goal(self, poses, durations):
+        goal_msg = FollowJointTrajectory.Goal()
+        goal_msg.trajectory.joint_names = JOINT_NAMES
+
+        points = []
+        for i, q in enumerate(poses):
+            pt = JointTrajectoryPoint()
+            pt.positions = q
+            pt.velocities = [0.0] * 6
+            pt.time_from_start.sec = durations[i]
+            points.append(pt)
+
+        goal_msg.trajectory.points = points
+        return goal_msg
+
+    def move_repeated(self):
+        self.get_logger().info("Waiting for FollowJointTrajectory action server...")
+        self.client.wait_for_server()
+
+        current_pos = self.wait_for_joint_state()
+        poses = [list(current_pos)]
+        durations = [0]
+
+        d = 2
+        for _ in range(10):
+            poses += [Q1, Q2, Q3]
+            durations += [d, d + 1, d + 2]
+            d += 3
+
+        goal_msg = self.build_goal(poses, durations)
+        self.get_logger().info("Sending repeated trajectory goal...")
+        future = self.client.send_goal_async(goal_msg)
+        rclpy.spin_until_future_complete(self, future)
+        result_future = future.result().get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        self.get_logger().info("Trajectory execution finished.")
+
 def main():
-    global client
-    try:
-        rospy.init_node("test_move", anonymous=True, disable_signals=True)
-        client = actionlib.SimpleActionClient('follow_joint_trajectory', FollowJointTrajectoryAction)
-        print("Waiting for server...")
-        client.wait_for_server()
-        print("Connected to server")
-        parameters = rospy.get_param(None)
-        index = str(parameters).find('prefix')
-        if (index > 0):
-            prefix = str(parameters)[index+len("prefix': '"):(index+len("prefix': '")+str(parameters)[index+len("prefix': '"):-1].find("'"))]
-            for i, name in enumerate(JOINT_NAMES):
-                JOINT_NAMES[i] = prefix + name
-        print("This program makes the robot move between the following three poses:")
-        print(str([Q1[i]*180./pi for i in range(0,6)]))
-        print(str([Q2[i]*180./pi for i in range(0,6)]))
-        print(str([Q3[i]*180./pi for i in range(0,6)]))
-        print("Please make sure that your robot can move freely between these poses before proceeding!")
-        inp = input("Continue? y/n: ")
-        if (inp == 'y'):
-            #move1()
-            move_repeated()
-            #move_disordered()
-            #move_interrupt()
-        else:
-            print("Halting program")
-    except KeyboardInterrupt:
-        rospy.signal_shutdown("KeyboardInterrupt")
-        raise
+    rclpy.init()
+    node = UR5eCommander()
 
-if __name__ == '__main__': main()
+    print("This program makes the robot move between the following three poses:")
+    print(str([q * 180. / math.pi for q in Q1]))
+    print(str([q * 180. / math.pi for q in Q2]))
+    print(str([q * 180. / math.pi for q in Q3]))
+    inp = input("Continue? y/n: ")
+    if inp.strip().lower() == 'y':
+        node.move_repeated()
+    else:
+        print("Halting program.")
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
