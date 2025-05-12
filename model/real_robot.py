@@ -1,124 +1,114 @@
-import sys
-sys.path.append("..")
-import numpy as np 
-import math 
+import math
+import numpy as np
 from math import pi
-""" FOR MODERN DRIVER """
-import roslib; roslib.load_manifest('ur_driver')
-import rospy
-import actionlib
-from control_msgs.msg import *
-from trajectory_msgs.msg import *
+
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from control_msgs.action import FollowJointTrajectory
+from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 
-class RealRobot:
+
+class RealRobot(Node):
     def __init__(self):
-        self.JOINT_NAMES = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
-                            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
-        self.arm_pub     = rospy.Publisher('arm_controller/command', JointTrajectory, queue_size = 10)
-        self.client      = None 
-        
-    def init_pose(self):
-        try: 
-            q = [-0.2, -0.8596, 1.3364, 0.0350, 0, 0]
-            g = FollowJointTrajectoryGoal()
-            g.trajectory = JointTrajectory()
-            g.trajectory.joint_names = self.JOINT_NAMES
-            joint_states = rospy.wait_for_message("joint_states", JointState)
-            joints_pos   = joint_states.position
-            g.trajectory.points = [
-                JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-                JointTrajectoryPoint(positions=q, velocities=[0]*6, time_from_start=rospy.Duration(3))]  
-            self.client.send_goal(g)
-            self.client.wait_for_result()
-        except KeyboardInterrupt:
-            self.client.cancel_goal()
-            raise
-        except:
-            raise
+        super().__init__('real_robot_controller')
+
+        self.JOINT_NAMES = [
+            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint'
+        ]
+
+        self.client = ActionClient(self, FollowJointTrajectory, '/follow_joint_trajectory')
+        self.joint_states_sub = self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
+        self.current_joint_positions = None
+
+    def joint_state_callback(self, msg):
+        self.current_joint_positions = msg.position
+
+    def wait_for_joint_state(self):
+        while rclpy.ok() and self.current_joint_positions is None:
+            self.get_logger().info('Waiting for joint_states...')
+            rclpy.spin_once(self)
+        return self.current_joint_positions
+
+    def build_trajectory(self, positions_list, time_list):
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = self.JOINT_NAMES
+        points = []
+        for pos, t in zip(positions_list, time_list):
+            pt = JointTrajectoryPoint()
+            pt.positions = pos
+            pt.velocities = [0.0] * 6
+            pt.time_from_start.sec = t
+            points.append(pt)
+        goal.trajectory.points = points
+        return goal
 
     def capture_pose(self):
-        try: 
-            q = [(-90)/180*math.pi, (-132.46)/180*math.pi, (122.85)/180*math.pi, (99.65)/180*math.pi, (45)/180*math.pi, (-90.02)/180*math.pi]
-            g = FollowJointTrajectoryGoal()
-            g.trajectory = JointTrajectory()
-            g.trajectory.joint_names = self.JOINT_NAMES
-            joint_states = rospy.wait_for_message("joint_states", JointState)
-            joints_pos   = joint_states.position
-            g.trajectory.points = [
-                JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-                JointTrajectoryPoint(positions=q, velocities=[0]*6, time_from_start=rospy.Duration(3))]  
-            self.client.send_goal(g)
-            self.client.wait_for_result()
-        except KeyboardInterrupt:
-            self.client.cancel_goal()
-            raise
-        except:
-            raise
+        q = [
+            -90.0 / 180 * math.pi,
+            -132.46 / 180 * math.pi,
+            122.85 / 180 * math.pi,
+            99.65 / 180 * math.pi,
+            45.0 / 180 * math.pi,
+            -90.02 / 180 * math.pi
+        ]
+        current_pos = self.wait_for_joint_state()
+        goal = self.build_trajectory([list(current_pos), q], [0, 3])
+
+        self.get_logger().info("Sending capture pose goal...")
+        self.client.wait_for_server()
+        future = self.client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future)
+        result_future = future.result().get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        self.get_logger().info("Capture pose executed.")
 
     def execute_trajectory(self, joint_list):
-        g = FollowJointTrajectoryGoal()
-        g.trajectory = JointTrajectory()
-        g.trajectory.joint_names = self.JOINT_NAMES
-        for i, q in enumerate(joint_list):
-            if i==0:
-                joint_states = rospy.wait_for_message("joint_states", JointState)
-                joints_pos   = joint_states.position
-                g.trajectory.points = [
-                    JointTrajectoryPoint(positions=joints_pos, velocities=[0]*6, time_from_start=rospy.Duration(0.0)),
-                    JointTrajectoryPoint(positions=q, velocities=[0]*6, time_from_start=rospy.Duration(3))]  
-                d=3
-            else:
-                vel = (q-prev_q) 
-                g.trajectory.points.append(
-                    JointTrajectoryPoint(positions=q, velocities=vel,time_from_start=rospy.Duration(d))) 
-            prev_q = q
-            d+=0.002
-        try:
-            print("MOVE")
-            self.client.send_goal(g)
-            self.client.wait_for_result()
-        except:
-            raise
+        positions = []
+        durations = []
 
-    def move_capture_pose(self): 
-        try: 
-            self.client = actionlib.SimpleActionClient('follow_joint_trajectory', FollowJointTrajectoryAction)
-            print("Waiting for server...")
-            self.client.wait_for_server()
-            print("Connected to server")
-            parameters = rospy.get_param(None)
-            index = str(parameters).find('prefix')
-            if (index > 0):
-                prefix = str(parameters)[index+len("prefix': '"):(index+len("prefix': '")+str(parameters)[index+len("prefix': '"):-1].find("'"))]
-                for i, name in enumerate(self.JOINT_NAMES):
-                    self.JOINT_NAMES[i] = prefix + name
-            order = input("Continue? y/n: ")
-            if order=="y": 
-                self.capture_pose()
-            else: 
-                print("Stop")
-        except KeyboardInterrupt:
-            rospy.signal_shutdown("KeyboardInterrupt")
-            raise
+        current_pos = self.wait_for_joint_state()
+        positions.append(list(current_pos))
+        durations.append(0)
 
-    def move_arm(self, joint_list=None): 
-        try: 
-            self.client = actionlib.SimpleActionClient('follow_joint_trajectory', FollowJointTrajectoryAction)
-            print("Waiting for server...")
-            self.client.wait_for_server()
-            print("Connected to server")
-            parameters = rospy.get_param(None)
-            index = str(parameters).find('prefix')
-            if (index > 0):
-                prefix = str(parameters)[index+len("prefix': '"):(index+len("prefix': '")+str(parameters)[index+len("prefix': '"):-1].find("'"))]
-                for i, name in enumerate(self.JOINT_NAMES):
-                    self.JOINT_NAMES[i] = prefix + name
-            order = input("Continue? y/n: ")
-            if order=="y": 
-                self.execute_trajectory(joint_list=joint_list)
-            else: 
-                print("Stop")
-        except KeyboardInterrupt:
-            rospy.signal_shutdown("KeyboardInterrupt")
-            raise
+        d = 3
+        for q in joint_list:
+            positions.append(q)
+            durations.append(d)
+            d += 1  # or use fixed small step like 0.01 if smoother is needed
+
+        goal = self.build_trajectory(positions, durations)
+        self.get_logger().info("Sending trajectory goal...")
+        self.client.wait_for_server()
+        future = self.client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future)
+        result_future = future.result().get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        self.get_logger().info("Trajectory finished.")
+
+    def move_capture_pose(self):
+        user_input = input("Continue to capture pose? (y/n): ")
+        if user_input.lower() == 'y':
+            self.capture_pose()
+        else:
+            self.get_logger().info("Capture pose canceled.")
+
+    def move_arm(self, joint_list):
+        user_input = input("Continue to move arm? (y/n): ")
+        if user_input.lower() == 'y':
+            self.execute_trajectory(joint_list)
+        else:
+            self.get_logger().info("Trajectory execution canceled.")
+
+
+def main():
+    rclpy.init()
+    robot = RealRobot()
+    robot.move_capture_pose()
+    robot.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()
