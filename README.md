@@ -2,7 +2,6 @@
 
 This package provides a minimal working example for controlling a **UR5e robot arm** using ROS.  
 It is intended for real-world manipulator experiments, leveraging a [customized-kinematics package](https://github.com/park-sangbeom/kinematics-usage) and ROS control interfaces.
----
 
 ## 🛠 Prerequisites
 
